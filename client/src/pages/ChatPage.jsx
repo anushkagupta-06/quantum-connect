@@ -17,6 +17,10 @@ export default function ChatPage() {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   const messagesEndRef = useRef(null);
   const emojiPickerRef = useRef();
 
@@ -191,6 +195,58 @@ export default function ChatPage() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // image upload setup
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file)); // for preview
+    }
+  };
+
+  const sendImageMessage = async () => {
+    if (!imageFile || !selectedUser || !currentUser) return;
+    setIsUploadingImage(true);         // start loading while image upload
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    try {
+      const res = await axios.post('http://localhost:5050/api/chat/upload-image', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      const imageUrl = res.data.url;
+      // Now send this URL as a message
+      const msgRes = await axios.post('http://localhost:5050/api/chat/message', {
+        receiverId: selectedUser._id,
+        text: imageUrl, // image URL as message text
+        isImage: true,
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const msgToSend = {
+        ...msgRes.data,
+        sender: currentUser._id,
+        receiver: selectedUser._id,
+        status: 'sent',
+      };
+      setMessages(prev => [...prev, msgToSend]);
+      socketRef.current.emit("send-message", {
+        receiverId: selectedUser._id,
+        message: msgToSend
+      });
+      setImageFile(null);
+      setImagePreview(null);
+    } catch (err) {
+      console.error("Failed to upload image", err);
+      toast.error("Image upload failed");
+    }finally {
+        setIsUploadingImage(false); // Stop loading
+      }
+  };   
+
   
 
   return (
@@ -255,21 +311,32 @@ export default function ChatPage() {
                         : 'bg-[#21262d] text-white border border-[#30363d]'
                         }`}
                     >
-                    {msg.text}
+                    {msg.isImage ? (
+                        <a href={msg.text} target="_blank" rel="noopener noreferrer">
+                        <img
+                        src={msg.text}
+                        alt="sent"
+                        className="max-w-xs rounded-lg shadow-md"
+                        onError={(e) => e.target.style.display = 'none'}
+                        />
+                        </a>
+                        ) : (
+                            msg.text
+                        )}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1 flex items-center gap-2">
+                        <span>{time}</span>
+                        {isSender && (
+                        <span className="italic">
+                        {msg.status === 'read' ? '✓✓ Read' : msg.status === 'delivered' ? '✓✓ Delivered' : '✓ Sent'}
+                        </span>
+                        )}
+                    </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-1 flex items-center gap-2">
-                    <span>{time}</span>
-                    {isSender && (
-                    <span className="italic">
-                    {msg.status === 'read' ? '✓✓ Read' : msg.status === 'delivered' ? '✓✓ Delivered' : '✓ Sent'}
-                    </span>
-                    )}
-                </div>
-            </div>
-            );
-            })}
+                );
+                })}
 
-            <div ref={messagesEndRef}></div>
+                <div ref={messagesEndRef}></div>
             </>
           ) : (
             <div className="text-center mt-32 text-gray-400 text-lg">
@@ -312,6 +379,24 @@ export default function ChatPage() {
               placeholder="Type your message..."
               className="flex-1 px-4 py-3 rounded-full bg-[#0d1117] text-white placeholder-gray-500 border border-[#30363d] focus:ring-2 focus:ring-[#58a6ff] outline-none"
             />
+
+            <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" id="imageUpload" />
+            <label htmlFor="imageUpload" className="cursor-pointer text-2xl">📷</label>
+
+            {imagePreview && (
+                <>
+                <div className="relative">
+                    <img src={imagePreview} alt="preview" className="w-32 h-32 object-cover rounded-xl mt-2" />
+                <button onClick={() => setImagePreview(null)} className="absolute top-1 right-1 bg-red-500 text-white text-sm px-2 py-1 rounded-full">✕</button>
+                <button onClick={sendImageMessage} className="bg-[#238636] text-white px-4 py-2 rounded-full mt-2" disabled={isUploadingImage}>
+                    {isUploadingImage ? "Sending..." : "Send Image"}
+                </button>
+                </div>
+                {isUploadingImage && (
+                    <div className="text-sm text-gray-400 mt-2 animate-pulse">Uploading image...</div>
+                  )}
+                </> 
+            )}
             <button
               onClick={sendMessage}
               className="bg-[#238636] hover:bg-[#2ea043] transition px-6 py-3 rounded-full font-semibold text-white shadow-md"

@@ -4,8 +4,11 @@ import {
   getAllUsers,
   getCurrentUser,
   sendMessage,
-  getMessagesWithUser
+  getMessagesWithUser,
+  uploadImage
 } from '../controllers/chatController.js';
+import multer from 'multer';
+import { storage } from '../utils/cloudinary.js';
 
 const router = express.Router();
 
@@ -17,5 +20,8 @@ router.get('/me', authenticate, getCurrentUser);
 router.post('/message', authenticate, sendMessage);
 // Get messages with a user
 router.get('/messages/:userId', authenticate, getMessagesWithUser);
+
+const upload = multer({ storage });
+router.post('/upload-image', upload.single('image'), uploadImage);
 
 export default router;

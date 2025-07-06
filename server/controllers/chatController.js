@@ -23,7 +23,7 @@ export const getCurrentUser = async (req, res) => {
 
 // Send a message
 export const sendMessage = async (req, res) => {
-  const { receiverId, text } = req.body;
+  const { receiverId, text, isImage } = req.body;
   try {
     console.log('Incoming message:', { sender: req.user.userId, receiverId, text });
 
@@ -31,6 +31,7 @@ export const sendMessage = async (req, res) => {
       sender: req.user.userId,
       receiver: receiverId,
       text,
+      isImage: isImage || false,
     });
 
     await newMsg.save();
@@ -61,4 +62,12 @@ export const getMessagesWithUser = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch messages' });
   }
+};
+
+export const uploadImage = (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No image provided' });
+  }
+  // File is already uploaded to Cloudinary by Multer-Storage-Cloudinary
+  res.json({ url: req.file.path }); // file.path is the Cloudinary secure URL
 };

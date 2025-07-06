@@ -10,6 +10,10 @@ const messageSchema = new mongoose.Schema(
       type: String,
       enum: ['sent', 'delivered', 'read'],
       default: 'sent'
+    },
+    isImage: {
+      type: Boolean,
+      default: false,
     }
   },
   { timestamps: true }

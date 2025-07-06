@@ -1,7 +1,9 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -12,7 +14,6 @@ import chatRoutes from './routes/chatRoutes.js';
 import connectDB from './config/db.js';
 import { setupChatSocket } from './sockets/chatSocket.js';
 
-dotenv.config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
