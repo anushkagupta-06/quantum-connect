@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { toast } from 'react-hot-toast';
+import EmojiPicker from 'emoji-picker-react';
 
 export default function ChatPage() {
   const [users, setUsers] = useState([]);
@@ -13,7 +14,11 @@ export default function ChatPage() {
 
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
   const messagesEndRef = useRef(null);
+  const emojiPickerRef = useRef();
 
   const socketRef = useRef();
   const selectedUserRef = useRef(null);
@@ -35,6 +40,11 @@ export default function ChatPage() {
           headers: { Authorization: `Bearer ${token}` }
         });
         setUsers(usersRes.data);
+
+        socket.on("update-user-status", (onlineUserIds) => {          // update the online-users map
+            setOnlineUsers(onlineUserIds);
+          });
+
       } catch (err) {
         toast.error("Failed to load chat data");
       }
@@ -59,7 +69,7 @@ export default function ChatPage() {
   // On the receiver side, when the chat is open, emit "message-read"
   // Finds all messages sent to you that are not read and emits them as message-read
   useEffect(() => {
-    if (selectedUser && messages.length > 0) {
+    if (selectedUser && currentUser && messages.length > 0) {
       const unread = messages
         .filter(m => m.receiver === currentUser._id && m.status !== 'read')
         .map(m => m._id);
@@ -96,15 +106,28 @@ export default function ChatPage() {
         setMessages(prev => [...prev, data]);
       }
     };
+    const handleStatusUpdate = ({ messageId, messageIds, status }) => {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => {
+            const id = msg._id?.toString();
+            if ((messageId && id === messageId) || (messageIds && messageIds.includes(id))) {
+              return { ...msg, status };
+            }
+            return msg;
+          })
+        );
+      };
     if (socketRef.current) {
       socketRef.current.on("receive-message", handleMessage);
+      socketRef.current.on("message-status-updated", handleStatusUpdate);
     }
     return () => {
       if (socketRef.current) {
         socketRef.current.off("receive-message", handleMessage);
+        socketRef.current.off("message-status-updated", handleStatusUpdate);
       }
     };
-  }, []);
+  }, [currentUser]);
   
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -145,12 +168,30 @@ export default function ChatPage() {
         receiverId: selectedUser._id,
         message: msgToSend
       });
-
+      setShowEmojiPicker(false);
       setNewMessage('');
     } catch (err) {
       console.error("Failed to send message", err);
     }
   };
+
+  // to close emoji-picker pop-up on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+  
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+  
 
   return (
     <div className="flex h-screen font-sans bg-[#0d1117] text-white">
@@ -158,7 +199,9 @@ export default function ChatPage() {
       <div className="w-72 p-6 border-r border-gray-800 bg-[#161b22]">
         <h2 className="text-2xl font-bold mb-6 text-[#58a6ff]">Quantum Connect</h2>
         <ul className="space-y-2 overflow-y-auto max-h-[85vh] custom-scrollbar">
-          {users.map(user => (
+          {users.map(user => {
+            const isOnline = onlineUsers.includes(user._id);
+            return (
             <li
               key={user._id}
               onClick={() => setSelectedUser(user)}
@@ -166,11 +209,14 @@ export default function ChatPage() {
                 selectedUser?._id === user._id
                   ? 'bg-[#1f6feb] text-white'
                   : 'hover:bg-[#21262d] hover:text-[#58a6ff]'}
-              `}
-            >
-              {user.username}
+              `} >
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                {user.username}
+                </div>
             </li>
-          ))}
+            );
+        })}
         </ul>
       </div>
 
@@ -235,6 +281,26 @@ export default function ChatPage() {
         {/* Input */}
         {selectedUser && (
           <div className="px-6 py-4 border-t border-gray-800 flex items-center space-x-4 bg-[#0d1117]">
+            {/* Emoji Button */}
+            <button
+                onClick={() => setShowEmojiPicker(prev => !prev)}        // onClick: Toggles the visibility of the emoji picker using state showEmojiPicker
+                className="text-white text-2xl"
+            >
+                😊
+            </button>
+            {/* Emoji Picker Popup */} 
+            {showEmojiPicker && (         // Renders the picker only when showEmojiPicker is true
+                <div ref={emojiPickerRef} className="absolute bottom-20 left-6 z-50">
+                <EmojiPicker          // Component from the emoji-picker-react library
+                onEmojiClick={(emojiData) => {
+                setNewMessage(prev => prev + emojiData.emoji);
+            }}
+            theme="dark"
+            />
+          </div>
+        )}
+
+            {/* Input */}
             <input
               type="text"
               value={newMessage}
