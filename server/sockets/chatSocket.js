@@ -14,9 +14,12 @@ export const setupChatSocket = (io) => {
         console.log(`User ${userId} joined their room`);
       });
   
-      socket.on('send-message', ({ receiverId, message }) => {
-        console.log('Emitting to:', receiverId, 'Message:', message);
-        io.to(receiverId).emit('receive-message', message);
+      socket.on('send-message', ({ receiverId, message, isCommunity }) => {
+        if (isCommunity) {
+          socket.broadcast.emit("receive-message", message); // to all
+        } else {
+          socket.to(receiverId).emit("receive-message", message); // to specific user
+        }
       });
 
       socket.on("typing", ({ receiverId }) => {

@@ -24,15 +24,16 @@ export const getCurrentUser = async (req, res) => {
 
 // Send a message
 export const sendMessage = async (req, res) => {
-  const { receiverId, text, isImage } = req.body;
+  const { receiverId, text, isImage, isCommunity } = req.body;
   try {
     console.log('Incoming message:', { sender: req.user.id, receiverId, text });
 
     const newMsg = new Message({
       sender: req.user.id,
-      receiver: receiverId,
+      receiver: isCommunity ? null : receiverId,
       text,
       isImage: isImage || false,
+      isCommunity: isCommunity || false,
     });
 
     await newMsg.save();
@@ -71,4 +72,21 @@ export const uploadImage = (req, res) => {
   }
   // File is already uploaded to Cloudinary by Multer-Storage-Cloudinary
   res.json({ url: req.file.path }); // file.path is the Cloudinary secure URL
+};
+
+// Community Chat
+export const getCommunityMessages = async (req, res) => {
+  try {
+    const messages = await Message.find({ isCommunity: true });
+    const populatedMessages = await Message.find({ isCommunity: true })
+      .populate('sender', 'username profileImage')
+      .sort('createdAt');
+    res.json(populatedMessages);
+  } catch (err) {
+    res.status(500).json({
+      message: 'Failed to fetch community messages',
+      error: err.message,
+      stack: err.stack,
+    });
+  }
 };

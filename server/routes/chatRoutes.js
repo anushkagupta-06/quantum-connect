@@ -5,7 +5,8 @@ import {
   getCurrentUser,
   sendMessage,
   getMessagesWithUser,
-  uploadImage
+  uploadImage,
+  getCommunityMessages
 } from '../controllers/chatController.js';
 import multer from 'multer';
 import { storage } from '../utils/cloudinary.js';
@@ -18,6 +19,10 @@ router.get('/users', authenticate, getAllUsers);
 router.get('/me', authenticate, getCurrentUser);
 // Send a message
 router.post('/message', authenticate, sendMessage);
+
+// community route
+router.get('/messages/community', authenticate, getCommunityMessages);
+
 // Get messages with a user
 router.get('/messages/:userId', authenticate, getMessagesWithUser);
 

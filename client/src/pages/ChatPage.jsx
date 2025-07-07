@@ -25,6 +25,7 @@ export default function ChatPage() {
   const [showProfile, setShowProfile] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [hoveredUser, setHoveredUser] = useState(null);
 
   const navigate = useNavigate();
 
@@ -80,7 +81,11 @@ export default function ChatPage() {
   // Fetch messages when user is selected
   useEffect(() => {
     if (selectedUser) {
-      axios.get(`http://localhost:5050/api/chat/messages/${selectedUser._id}`, {
+      const endpoint = selectedUser._id === 'community'
+        ? 'messages/community'
+        : `messages/${selectedUser._id}`;
+    
+      axios.get(`http://localhost:5050/api/chat/${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` }
       }).then(res => setMessages(res.data)).catch(console.error);
     }
@@ -191,12 +196,14 @@ export default function ChatPage() {
     if (!newMessage.trim() || !selectedUser || !currentUser) return;
 
     try {
+      const isCommunity = selectedUser?._id === 'community';
       const res = await axios.post("http://localhost:5050/api/chat/message", {
-        receiverId: selectedUser._id,
-        text: newMessage.trim(),
+      receiverId: isCommunity ? null : selectedUser._id,
+      text: newMessage.trim(),
+      isCommunity,
       }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      headers: { Authorization: `Bearer ${token}` }
+    });
 
       const msgToSend = {
         ...res.data,
@@ -212,8 +219,9 @@ export default function ChatPage() {
       setMessages(prev => [...prev, msgToSend]);
 
       socketRef.current.emit("send-message", {
-        receiverId: selectedUser._id,
-        message: msgToSend
+        receiverId: isCommunity ? null : selectedUser._id,
+        message: msgToSend,
+        isCommunity,
       });
       setShowEmojiPicker(false);
       socketRef.current.emit("stop-typing", { receiverId: selectedUser._id });
@@ -263,17 +271,19 @@ export default function ChatPage() {
       });
       const imageUrl = res.data.url;
       // Now send this URL as a message
+      const isCommunity = selectedUser._id === 'community';
       const msgRes = await axios.post('http://localhost:5050/api/chat/message', {
-        receiverId: selectedUser._id,
-        text: imageUrl, // image URL as message text
+        receiverId: isCommunity ? null : selectedUser._id,
+        text: imageUrl,
         isImage: true,
+        isCommunity,
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const msgToSend = {
         ...msgRes.data,
         sender: currentUser._id,
-        receiver: selectedUser._id,
+        receiver: isCommunity ? null : selectedUser._id,
         status: 'sent',
       };
       setMessages(prev => [...prev, msgToSend]);
@@ -296,7 +306,7 @@ export default function ChatPage() {
   return (
     <div className="flex h-screen font-sans bg-[#0d1117] text-white">
       {/* Sidebar */}
-      <div className="w-72 p-6 border-r border-gray-800 bg-[#161b22]">
+      <div className="w-96 p-6 border-r border-gray-800 bg-[#161b22]">
         <h2 className="text-2xl font-bold mb-6 text-[#ffa058]">Quantum Connect</h2>
 
         {/* Current User Info */}
@@ -333,6 +343,19 @@ export default function ChatPage() {
             className="w-full mb-4 px-4 py-2 rounded-full bg-[#0d1117] text-white placeholder-gray-400 border border-[#30363d] focus:ring-2 focus:ring-[#58a6ff] outline-none"
         />
 
+        {/* Community button */}
+        <li
+          onClick={() => setSelectedUser({ _id: 'community', username: 'Community Chat' })}
+          className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold cursor-pointer transform transition-all duration-300
+            ${
+              selectedUser?._id === 'community'
+                ? 'bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 text-white shadow-lg scale-105'
+                : 'bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 text-white shadow-md hover:scale-105'
+              }`}
+        >
+        <span className="text-2xl">🌐</span>
+        <span>Community Chat</span>
+        </li>
         <ul className="space-y-2 overflow-y-auto max-h-[85vh] custom-scrollbar">
         {users
             .filter(user => user.username.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -386,13 +409,22 @@ export default function ChatPage() {
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#161b22]">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowProfile(true)}>
             <img
-                src={selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                src={
+                  selectedUser._id === 'community'
+                  ? "https://cdn-icons-png.flaticon.com/512/921/921347.png" // a globe icon or your custom community image
+                  : selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
                 className="w-10 h-10 rounded-full object-cover"
                 alt="avatar"
             />
             <div>
-                <h3 className="text-lg font-semibold text-white">{selectedUser.username}</h3>
-                <p className="text-sm text-gray-400">{selectedUser.bio || "No bio"}</p>
+            <h3 className="text-lg font-semibold text-white">
+              {selectedUser._id === 'community' ? "Community Chat" : selectedUser.username}
+            </h3>
+            <p className="text-sm text-gray-400">
+              {selectedUser._id === 'community'
+                ? "Public group for all users"
+                : selectedUser.bio || "No bio"}
+            </p>
             </div>
         </div>
 
@@ -414,32 +446,41 @@ export default function ChatPage() {
           {selectedUser ? (
             <>
               {messages.map((msg, index) => {
-                const isSender = msg.sender === currentUser?._id || msg.sender?._id === currentUser?._id;
+                const senderId = typeof msg.sender === "object" ? msg.sender._id : msg.sender;
+                const senderObj = typeof msg.sender === "object"
+                  ? msg.sender
+                  : senderId === currentUser?._id
+                  ? currentUser
+                  : users.find(u => u._id === senderId);
+                  const isSender = senderId === currentUser?._id;
                 const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 return (
-                    <div key={index} className={`flex ${isSender ? 'justify-end' : 'justify-start'} items-start`}>
+                    <div key={index} className={`w-full flex ${isSender ? 'justify-end' : 'justify-start'} items-start`}>
                     {!isSender && (
                       <img
-                        src={selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
-                        className="w-8 h-8 rounded-full object-cover mr-2 mt-1"
+                        src={senderObj?.profileImage  || "https://www.w3schools.com/howto/img_avatar.png"}
                         alt="sender"
+                        className="w-6 h-6 rounded-full object-cover mr-2 mt-1 cursor-pointer border border-gray-500"
+                        onClick={() => setHoveredUser(senderObj)} // <-- open profile modal
                       />
                     )}
                     
-                    <div className="flex flex-col">
+                    <div className="flex flex-col items-end max-w-[70%]">
                       <div
-                        className={`max-w-[70%] px-4 py-3 rounded-xl text-sm shadow-md break-words ${
+                        className={`inline-block max-w-[70%] px-4 py-3 rounded-xl text-sm shadow-md break-words ${
                           isSender
                             ? 'bg-[#238636] text-white'
                             : 'bg-[#21262d] text-white border border-[#30363d]'
                         }`}
                       >
                         {msg.isImage ? (
+                          // wrapping in anchor tag we can click the image and view it full-size
                           <a href={msg.text} target="_blank" rel="noopener noreferrer">
                             <img
                               src={msg.text}
                               alt="sent"
-                              className="max-w-xs rounded-lg shadow-md"
+                              className="max-w-full max-h-64 rounded-xl object-contain border border-gray-600"
+                              style={{ display: 'block' }}
                               onError={(e) => e.target.style.display = 'none'}
                             />
                           </a>
@@ -557,19 +598,57 @@ export default function ChatPage() {
             </button>
             <div className="flex flex-col items-center space-y-4">
               <img
-                src={selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                src={
+                  selectedUser._id === 'community'
+                    ? "https://cdn-icons-png.flaticon.com/512/921/921347.png" // a globe icon or your custom community image
+                    : selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"
+                }
                 alt="Profile"
                 className="w-24 h-24 rounded-full object-cover border border-gray-600"
               />
               <h2 className="text-xl font-semibold">{selectedUser.username}</h2>
-              <p className="text-gray-400 text-center">{selectedUser.bio || "No bio available."}</p>
-              <p className="text-sm text-gray-500">Email: {selectedUser.email || "N/A"}</p>
-              <p className="text-sm text-gray-500">Joined: {new Date(selectedUser.createdAt).toLocaleDateString()}</p>
-            </div>
+              {selectedUser._id === 'community' ? (
+              <>
+                <p className="text-gray-400 text-center">A public space to share ideas with everyone 🌐</p>
+                <p className="text-sm text-gray-500">Email: community@quantumconnect.io</p>
+                <p className="text-sm text-gray-500">You Joined: {new Date(currentUser?.createdAt).toLocaleDateString()}</p>
+              </>
+              ) : (
+              <>
+                <p className="text-gray-400 text-center">{selectedUser.bio || "No bio available."}</p>
+                <p className="text-sm text-gray-500">Email: {selectedUser.email || "N/A"}</p>
+                <p className="text-sm text-gray-500">Joined: {new Date(selectedUser.createdAt).toLocaleDateString()}</p>
+              </>
+            )}
+           </div>
           </div>
         </div>
       )}
-      
+
+      {/* to show user info who sent the msg */}
+      {hoveredUser && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center">
+          <div className="bg-[#161b22] p-6 rounded-xl shadow-lg w-96 text-white relative">
+            <button
+            onClick={() => setHoveredUser(null)}
+            className="absolute top-2 right-3 text-white text-xl"
+          >
+            ✕
+          </button>
+          <div className="flex flex-col items-center space-y-4">
+            <img
+              src={hoveredUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+              alt="Profile"
+              className="w-24 h-24 rounded-full object-cover border border-gray-600"
+            />
+            <h2 className="text-xl font-semibold">{hoveredUser.username}</h2>
+            <p className="text-gray-400 text-center">{hoveredUser.bio || "No bio available."}</p>
+            <p className="text-sm text-gray-500">Email: {hoveredUser.email || "N/A"}</p>
+            <p className="text-sm text-gray-500">Joined: {new Date(hoveredUser.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+        </div>
+      )}
     </div>
   );
 }
