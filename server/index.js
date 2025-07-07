@@ -14,6 +14,8 @@ import chatRoutes from './routes/chatRoutes.js';
 import connectDB from './config/db.js';
 import { setupChatSocket } from './sockets/chatSocket.js';
 
+import userRoutes from './routes/userRoutes.js';
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -39,6 +41,8 @@ app.use('/api/chat', chatRoutes);
 
 // Socket.io
 setupChatSocket(io);
+
+app.use("/api/user", userRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

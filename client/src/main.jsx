@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import HomePage from './pages/HomePage'
 import { Toaster } from 'react-hot-toast'
 import ChatPage from './pages/ChatPage'
+import Settings from './pages/Settings'; 
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -27,6 +28,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           element={
           <ProtectedRoute>
             <ChatPage />
+          </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+          <ProtectedRoute>
+            <Settings />
           </ProtectedRoute>
           }
         />

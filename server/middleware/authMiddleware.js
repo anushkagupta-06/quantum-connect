@@ -11,12 +11,10 @@ export const authenticate = (req, res, next) => {
   
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  
-      // Attach user ID to request object
       req.user = {
-        userId: decoded.userId, 
+        id: decoded.userId, 
+        username: decoded.username,
       };
-  
       next();
     } catch (err) {
       console.error("JWT Error:", err.message);

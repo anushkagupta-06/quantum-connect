@@ -3,6 +3,7 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import { toast } from 'react-hot-toast';
 import EmojiPicker from 'emoji-picker-react';
+import { useNavigate } from "react-router-dom";
 
 export default function ChatPage() {
   const [users, setUsers] = useState([]);
@@ -15,17 +16,24 @@ export default function ChatPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [unreadCounts, setUnreadCounts] = useState({});
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const navigate = useNavigate();
 
   const messagesEndRef = useRef(null);
   const emojiPickerRef = useRef();
 
   const socketRef = useRef();
   const selectedUserRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   // Socket setup and user fetch
   useEffect(() => {
@@ -48,7 +56,15 @@ export default function ChatPage() {
         socket.on("update-user-status", (onlineUserIds) => {          // update the online-users map
             setOnlineUsers(onlineUserIds);
           });
-
+          socket.on("typing", ({ senderId }) => {
+            setTypingUser(senderId);
+            setIsTyping(true);
+          });
+          
+          socket.on("stop-typing", ({ senderId }) => {
+            setTypingUser(null);
+            setIsTyping(false);
+          });          
       } catch (err) {
         toast.error("Failed to load chat data");
       }
@@ -102,6 +118,17 @@ export default function ChatPage() {
           senderId
         });
       }
+      // show unread msgs count
+      if (
+        currentUser &&
+        data.receiver === currentUser._id &&
+        (!selectedUserRef.current || selectedUserRef.current._id !== senderId)
+      ) {
+        setUnreadCounts(prev => ({
+          ...prev,
+          [senderId]: (prev[senderId] || 0) + 1
+        }));
+      }
       // Only show message in UI if it belongs to current open chat
       if (
         currentSelectedUser &&
@@ -132,6 +159,16 @@ export default function ChatPage() {
       }
     };
   }, [currentUser]);
+
+  // on clicking a user set unread count to 0
+  useEffect(() => {
+    if (selectedUser) {
+      setUnreadCounts(prev => ({
+        ...prev,
+        [selectedUser._id]: 0
+      }));
+    }
+  }, [selectedUser]);  
   
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -140,8 +177,12 @@ export default function ChatPage() {
 
   const handleTyping = () => {
     socketRef.current.emit("typing", { receiverId: selectedUser._id });
-    clearTimeout(window.typingTimeout);
-    window.typingTimeout = setTimeout(() => {
+    console.log("Typing emitted to:", selectedUser._id);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
       socketRef.current.emit("stop-typing", { receiverId: selectedUser._id });
     }, 2500);
   };
@@ -165,6 +206,8 @@ export default function ChatPage() {
         _id: res.data._id, 
 
       };
+      console.log("Sending message:", JSON.stringify(newMessage));
+
 
       setMessages(prev => [...prev, msgToSend]);
 
@@ -173,6 +216,7 @@ export default function ChatPage() {
         message: msgToSend
       });
       setShowEmojiPicker(false);
+      socketRef.current.emit("stop-typing", { receiverId: selectedUser._id });
       setNewMessage('');
     } catch (err) {
       console.error("Failed to send message", err);
@@ -254,23 +298,82 @@ export default function ChatPage() {
       {/* Sidebar */}
       <div className="w-72 p-6 border-r border-gray-800 bg-[#161b22]">
         <h2 className="text-2xl font-bold mb-6 text-[#58a6ff]">Quantum Connect</h2>
+
+        {/* Current User Info */}
+        {currentUser && (
+            <div className="flex items-center justify-between gap-4 mb-6 p-3 rounded-xl border border-[#30363d] bg-[#21262d] shadow-md">
+            <div className="flex items-center gap-3">
+              <img
+                src={currentUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                alt="Profile"
+                className="w-12 h-12 rounded-full border border-gray-700 object-cover"
+              />
+              <div>
+                <h4 className="font-semibold text-white text-lg">{currentUser.username}</h4>
+                <p className="text-sm text-gray-400">You</p>
+              </div>
+            </div>
+            {/* Right: Settings Icon */}
+            <button
+                title="Settings"
+                onClick={() => navigate("/settings")}
+                className="text-gray-400 hover:text-[#58a6ff] transition text-xl"
+            >
+                ⚙️
+            </button>
+          </div>
+        )}
+
+        {/* Sidebar */}
+        <input
+            type="text"
+            placeholder="Search users..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full mb-4 px-4 py-2 rounded-full bg-[#0d1117] text-white placeholder-gray-400 border border-[#30363d] focus:ring-2 focus:ring-[#58a6ff] outline-none"
+        />
+
         <ul className="space-y-2 overflow-y-auto max-h-[85vh] custom-scrollbar">
-          {users.map(user => {
+        {users
+            .filter(user => user.username.toLowerCase().includes(searchTerm.toLowerCase()))
+            .map(user => {
             const isOnline = onlineUsers.includes(user._id);
+            const unreadCount = unreadCounts[user._id] || 0;           // to have a count of unread msgs
             return (
-            <li
-              key={user._id}
-              onClick={() => setSelectedUser(user)}
-              className={`px-4 py-2 rounded-xl cursor-pointer font-medium transition duration-200 whitespace-nowrap overflow-hidden text-ellipsis ${
-                selectedUser?._id === user._id
-                  ? 'bg-[#1f6feb] text-white'
-                  : 'hover:bg-[#21262d] hover:text-[#58a6ff]'}
-              `} >
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></span>
-                {user.username}
+                <li
+                key={user._id}
+                onClick={() => setSelectedUser(user)}
+                className={`px-4 py-2 rounded-xl cursor-pointer transition duration-200 ${
+                  selectedUser?._id === user._id
+                    ? 'bg-[#1f6feb] text-white'
+                    : 'hover:bg-[#21262d] hover:text-[#58a6ff] text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={user.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                      alt="profile"
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <span className="font-medium">{user.username}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {unreadCount > 0 && (
+                      <span className="bg-red-600 text-xs px-2 py-1 rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        isOnline ? 'bg-green-500' : 'bg-gray-500'
+                      }`}
+                    />
+                  </div>
                 </div>
-            </li>
+              </li>
+              
             );
         })}
         </ul>
@@ -281,7 +384,18 @@ export default function ChatPage() {
         {/* Chat Header */}
         {selectedUser && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#161b22]">
-            <h3 className="text-xl font-semibold text-white">{selectedUser.username}</h3>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowProfile(true)}>
+            <img
+                src={selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                className="w-10 h-10 rounded-full object-cover"
+                alt="avatar"
+            />
+            <div>
+                <h3 className="text-lg font-semibold text-white">{selectedUser.username}</h3>
+                <p className="text-sm text-gray-400">{selectedUser.bio || "No bio"}</p>
+            </div>
+        </div>
+
             {isTyping && typingUser?.toString() === selectedUser._id?.toString() && (
                 <div className="flex items-center space-x-2">
                 <span className="text-sm font-semibold text-[#58a6ff] animate-pulse">Typing</span>
@@ -303,41 +417,62 @@ export default function ChatPage() {
                 const isSender = msg.sender === currentUser?._id || msg.sender?._id === currentUser?._id;
                 const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 return (
-                <div key={index} className={`flex flex-col ${isSender ? 'items-end' : 'items-start'}`}>
-                    <div
+                    <div key={index} className={`flex ${isSender ? 'justify-end' : 'justify-start'} items-start`}>
+                    {!isSender && (
+                      <img
+                        src={selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                        className="w-8 h-8 rounded-full object-cover mr-2 mt-1"
+                        alt="sender"
+                      />
+                    )}
+                    
+                    <div className="flex flex-col">
+                      <div
                         className={`max-w-[70%] px-4 py-3 rounded-xl text-sm shadow-md break-words ${
-                        isSender
-                        ? 'bg-[#238636] text-white'
-                        : 'bg-[#21262d] text-white border border-[#30363d]'
+                          isSender
+                            ? 'bg-[#238636] text-white'
+                            : 'bg-[#21262d] text-white border border-[#30363d]'
                         }`}
-                    >
-                    {msg.isImage ? (
-                        <a href={msg.text} target="_blank" rel="noopener noreferrer">
-                        <img
-                        src={msg.text}
-                        alt="sent"
-                        className="max-w-xs rounded-lg shadow-md"
-                        onError={(e) => e.target.style.display = 'none'}
-                        />
-                        </a>
+                      >
+                        {msg.isImage ? (
+                          <a href={msg.text} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={msg.text}
+                              alt="sent"
+                              className="max-w-xs rounded-lg shadow-md"
+                              onError={(e) => e.target.style.display = 'none'}
+                            />
+                          </a>
                         ) : (
-                            msg.text
+                            <p className="whitespace-pre-line break-words">{msg.text}</p>
                         )}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1 flex items-center gap-2">
+                      </div>
+                  
+                      <div className="text-xs text-gray-400 mt-1 flex items-center gap-2">
                         <span>{time}</span>
                         {isSender && (
-                        <span className="italic">
-                        {msg.status === 'read' ? '✓✓ Read' : msg.status === 'delivered' ? '✓✓ Delivered' : '✓ Sent'}
-                        </span>
+                          <span className="italic">
+                            {msg.status === 'read' ? '✓✓ Read' : msg.status === 'delivered' ? '✓✓ Delivered' : '✓ Sent'}
+                          </span>
                         )}
+                      </div>
+                    </div>
+                    </div>
+                );
+            })}
+             {/* to show typing indication */}
+            {isTyping && typingUser === selectedUser?._id && (
+                <div className="flex items-center space-x-2 px-4">
+                    <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
+                        <span className="text-white text-lg">💬</span>
+                    </div>
+                    <div className="px-4 py-2 rounded-xl bg-[#21262d] text-sm text-gray-300 animate-pulse">
+                        {selectedUser.username} is typing...
                     </div>
                 </div>
-                );
-                })}
-
-                <div ref={messagesEndRef}></div>
-            </>
+            )}
+            <div ref={messagesEndRef} />
+           </>
           ) : (
             <div className="text-center mt-32 text-gray-400 text-lg">
               Select a user to start chatting
@@ -375,7 +510,12 @@ export default function ChatPage() {
                 setNewMessage(e.target.value);
                 handleTyping();
               }}
-              onKeyDown={e => e.key === 'Enter' && sendMessage()}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
               placeholder="Type your message..."
               className="flex-1 px-4 py-3 rounded-full bg-[#0d1117] text-white placeholder-gray-500 border border-[#30363d] focus:ring-2 focus:ring-[#58a6ff] outline-none"
             />
@@ -406,6 +546,30 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+      {showProfile && selectedUser && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center">
+          <div className="bg-[#161b22] p-6 rounded-xl shadow-lg w-96 text-white relative">
+            <button
+              onClick={() => setShowProfile(false)}
+              className="absolute top-2 right-3 text-white text-xl"
+            >
+              ✕
+            </button>
+            <div className="flex flex-col items-center space-y-4">
+              <img
+                src={selectedUser.profileImage || "https://www.w3schools.com/howto/img_avatar.png"}
+                alt="Profile"
+                className="w-24 h-24 rounded-full object-cover border border-gray-600"
+              />
+              <h2 className="text-xl font-semibold">{selectedUser.username}</h2>
+              <p className="text-gray-400 text-center">{selectedUser.bio || "No bio available."}</p>
+              <p className="text-sm text-gray-500">Email: {selectedUser.email || "N/A"}</p>
+              <p className="text-sm text-gray-500">Joined: {new Date(selectedUser.createdAt).toLocaleDateString()}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
     </div>
   );
 }

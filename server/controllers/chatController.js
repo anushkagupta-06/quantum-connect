@@ -4,7 +4,7 @@ import Message from '../models/Message.js';
 // Get all users except self
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ _id: { $ne: req.user.userId } }).select('username _id');
+    const users = await User.find({ _id: { $ne: req.user.id } }).select('username _id profileImage bio email createdAt');
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch users' });
@@ -14,7 +14,8 @@ export const getAllUsers = async (req, res) => {
 // Get current logged-in user's data
 export const getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('username _id');
+    const user = await User.findById(req.user.id).select('username _id email createdAt profileImage bio');
+    if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch current user' });
@@ -25,10 +26,10 @@ export const getCurrentUser = async (req, res) => {
 export const sendMessage = async (req, res) => {
   const { receiverId, text, isImage } = req.body;
   try {
-    console.log('Incoming message:', { sender: req.user.userId, receiverId, text });
+    console.log('Incoming message:', { sender: req.user.id, receiverId, text });
 
     const newMsg = new Message({
-      sender: req.user.userId,
+      sender: req.user.id,
       receiver: receiverId,
       text,
       isImage: isImage || false,
@@ -54,8 +55,8 @@ export const getMessagesWithUser = async (req, res) => {
   try {
     const messages = await Message.find({
       $or: [
-        { sender: req.user.userId, receiver: otherUserId },
-        { sender: otherUserId, receiver: req.user.userId },
+        { sender: req.user.id, receiver: otherUserId },
+        { sender: otherUserId, receiver: req.user.id },
       ],
     }).sort('createdAt');
     res.json(messages);

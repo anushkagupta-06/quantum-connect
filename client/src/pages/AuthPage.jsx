@@ -98,6 +98,7 @@ export default function AuthPage() {
               value={formData.password}
               onChange={handleChange}
               placeholder="Password"
+              autoComplete="current-password"
               className="w-full px-4 py-3 pr-12 rounded bg-white/10 placeholder-white/70 text-white outline-none focus:ring-2 ring-primary"
             />
             <button

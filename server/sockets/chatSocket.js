@@ -20,11 +20,11 @@ export const setupChatSocket = (io) => {
       });
 
       socket.on("typing", ({ receiverId }) => {
-        socket.to(receiverId).emit("user-typing", { from: socket.userId });
+        socket.to(receiverId).emit("typing", { senderId: socket.userId });
       });
 
       socket.on('stop-typing', ({ receiverId }) => {
-        socket.to(receiverId).emit('stop-typing', { from: socket.userId });
+        socket.to(receiverId).emit('stop-typing', { senderId: socket.userId });
       });
 
       socket.on("message-delivered", async ({ messageId, senderId }) => {
