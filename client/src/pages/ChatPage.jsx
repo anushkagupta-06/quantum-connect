@@ -297,7 +297,7 @@ export default function ChatPage() {
     <div className="flex h-screen font-sans bg-[#0d1117] text-white">
       {/* Sidebar */}
       <div className="w-72 p-6 border-r border-gray-800 bg-[#161b22]">
-        <h2 className="text-2xl font-bold mb-6 text-[#58a6ff]">Quantum Connect</h2>
+        <h2 className="text-2xl font-bold mb-6 text-[#ffa058]">Quantum Connect</h2>
 
         {/* Current User Info */}
         {currentUser && (
@@ -345,7 +345,7 @@ export default function ChatPage() {
                 onClick={() => setSelectedUser(user)}
                 className={`px-4 py-2 rounded-xl cursor-pointer transition duration-200 ${
                   selectedUser?._id === user._id
-                    ? 'bg-[#1f6feb] text-white'
+                    ? 'bg-[#205497] text-white'
                     : 'hover:bg-[#21262d] hover:text-[#58a6ff] text-white'
                 }`}
               >
